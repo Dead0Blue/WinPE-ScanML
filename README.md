@@ -1,16 +1,22 @@
-# AI-Assisted-Windows-PE-Static-Malware-Analysis
-## Malware Detection Web Application
+# Malware Detection System
 
-This application detects malware in Windows PE files using machine learning.
+AI-powered Windows PE malware detection using static analysis features.
 
-### Features
-- Accepts CSV/Excel files with PE features
-- Returns malware probability scores
-- Downloadable results
+## Features
+- Malicious/Benign classification
+- Probability scoring
+- Batch file processing
 
-### Usage
-1. Upload a file with PE features
+## How to Use
+1. Upload CSV/Excel file with PE features
 2. View prediction results
-3. Download analysis report
+3. Download report
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/votre_nom/AI-Assisted-Windows-PE-Static-Malware-Analysis/main/app.py)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/Dead0Blue/AI-Assisted-Windows-PE-Static-Malware-Analysis/main/app.py)
+
+## Run Locally
+```bash
+git clone https://github.com/Dead0Blue/AI-Assisted-Windows-PE-Static-Malware-Analysis.git
+cd AI-Assisted-Windows-PE-Static-Malware-Analysis
+pip install -r requirements.txt
+streamlit run app.py
