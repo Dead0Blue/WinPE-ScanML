@@ -4,7 +4,6 @@ import numpy as np
 import joblib
 import time
 from datetime import datetime
-import io
 import os
 
 # Page configuration
@@ -18,10 +17,14 @@ st.set_page_config(
 # Load model and artifacts
 @st.cache_resource
 def load_model():
-    model = joblib.load('model_artifacts/modele_regression_logistique.pkl')
-    scaler = joblib.load('model_artifacts/scaler.pkl')
-    feature_columns = joblib.load('model_artifacts/features_columns.pkl')
-    return model, scaler, feature_columns
+    try:
+        model = joblib.load('model_artifacts/modele_regression_logistique.pkl')
+        scaler = joblib.load('model_artifacts/scaler.pkl')
+        feature_columns = joblib.load('model_artifacts/features_columns.pkl')
+        return model, scaler, feature_columns
+    except Exception as e:
+        st.error(f"Error loading model: {str(e)}")
+        st.stop()
 
 model, scaler, feature_columns = load_model()
 
@@ -49,14 +52,16 @@ def preprocess_data(df):
     # Convert appeared column
     if 'appeared' in processed.columns:
         processed['appeared'] = processed['appeared'].apply(convert_appeared)
-        processed['appeared'] = processed['appeared'].fillna(processed['appeared'].median())
+        appeared_median = processed['appeared'].median()
+        processed['appeared'] = processed['appeared'].fillna(appeared_median)
     
     # Process numeric columns
     numeric_cols = ['exports', 'datadirectories']
     for col in numeric_cols:
         if col in processed.columns:
             processed[col] = pd.to_numeric(processed[col], errors='coerce')
-            processed[col] = processed[col].fillna(processed[col].median())
+            col_median = processed[col].median()
+            processed[col] = processed[col].fillna(col_median)
     
     # Process categorical columns
     if 'avclass' in processed.columns:
@@ -111,8 +116,8 @@ with st.sidebar:
     - AUC ROC: 0.9976
     """)
     st.divider()
-    st.markdown("Developed by [Your Name]")
-    st.markdown("[GitHub Repository](https://github.com/yourusername/AI-Assisted-Windows-PE-Static-Malware-Analysis)")
+    st.markdown("Developed by Your Name")
+    st.markdown("[GitHub Repository](https://github.com/Dead0Blue/AI-Assisted-Windows-PE-Static-Malware-Analysis)")
 
 # File upload section
 uploaded_file = st.file_uploader("Upload your PE features file (CSV or Excel)", type=["csv", "xlsx"])
@@ -123,7 +128,7 @@ if uploaded_file is not None:
         if uploaded_file.name.endswith('.csv'):
             df = pd.read_csv(uploaded_file)
         else:
-            df = pd.read_excel(uploaded_file)
+            df = pd.read_excel(uploaded_file, engine='openpyxl')
         
         # Show preview
         st.subheader("Uploaded Data Preview")
