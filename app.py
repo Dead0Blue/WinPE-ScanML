@@ -2,9 +2,15 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
+import hashlib
 import time
 from datetime import datetime
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import os
+import matplotlib.pyplot as plt
+from io import BytesIO
 
 # Page configuration
 st.set_page_config(
@@ -13,7 +19,16 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
- 
+
+# Initialize session state for threat tracking
+if 'threat_stats' not in st.session_state:
+    st.session_state.threat_stats = {
+        'total_files': 0,
+        'malicious_count': 0,
+        'benign_count': 0,
+        'recent_files': []
+    }
+
 # Load model and artifacts
 @st.cache_resource
 def load_model():
@@ -21,84 +36,62 @@ def load_model():
         model = joblib.load('model_artifacts/modele_regression_logistique.pkl')
         scaler = joblib.load('model_artifacts/scaler.pkl')
         feature_columns = joblib.load('model_artifacts/features_columns.pkl')
-        return model, scaler, feature_columns
+        # Load sample database (replace with your actual training data)
+        db = pd.read_csv('sample_database.csv')  
+        return model, scaler, feature_columns, db
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
         st.stop()
 
-model, scaler, feature_columns = load_model()
+model, scaler, feature_columns, database = load_model()
 
-# Preprocessing functions
-def convert_appeared(date_str):
+# Email configuration
+SMTP_SERVER = "smtp.example.com"
+SMTP_PORT = 587
+SMTP_USER = "your_email@example.com"
+SMTP_PASSWORD = "your_password"
+
+# Hash calculation functions
+def calculate_sha256(file):
+    file.seek(0)
+    return hashlib.sha256(file.read()).hexdigest()
+
+def calculate_md5(file):
+    file.seek(0)
+    return hashlib.md5(file.read()).hexdigest()
+
+# Email alert function
+def send_email_alert(file_name, result, confidence, recipient):
     try:
-        if isinstance(date_str, str):
-            return datetime.strptime(date_str + '-01', '%Y-%m-%d').timestamp()
-        else:
-            return np.nan
-    except:
-        return np.nan
-
-def preprocess_data(df):
-    """Preprocess input data to match training format"""
-    # Create a copy to avoid modifying original
-    processed = df.copy()
-    
-    # Drop unnecessary columns
-    if 'sha256' in processed.columns:
-        processed = processed.drop('sha256', axis=1)
-    if 'md5' in processed.columns:
-        processed = processed.drop('md5', axis=1)
-    
-    # Convert appeared column
-    if 'appeared' in processed.columns:
-        processed['appeared'] = processed['appeared'].apply(convert_appeared)
-        appeared_median = processed['appeared'].median()
-        processed['appeared'] = processed['appeared'].fillna(appeared_median)
-    
-    # Process numeric columns
-    numeric_cols = ['exports', 'datadirectories']
-    for col in numeric_cols:
-        if col in processed.columns:
-            processed[col] = pd.to_numeric(processed[col], errors='coerce')
-            col_median = processed[col].median()
-            processed[col] = processed[col].fillna(col_median)
-    
-    # Process categorical columns
-    if 'avclass' in processed.columns:
-        processed['avclass'] = processed['avclass'].fillna('missing')
-    
-    # Process complex columns
-    complex_cols = ['histogram', 'byteentropy', 'strings', 'general', 'header', 'section', 'imports']
-    for col in complex_cols:
-        if col in processed.columns:
-            processed[col] = processed[col].astype(str)
-            processed[col] = processed[col].apply(lambda x: x[:50] + '...' if len(x) > 50 else x)
-    
-    # Create dummies
-    categorical_cols = ['avclass'] + complex_cols
-    processed = pd.get_dummies(processed, columns=categorical_cols, drop_first=True)
-    
-    # Ensure all columns from training are present
-    for col in feature_columns:
-        if col not in processed.columns:
-            processed[col] = 0
-    
-    # Reorder columns to match training
-    processed = processed[feature_columns]
-    
-    # Scale the data
-    processed_scaled = scaler.transform(processed)
-    
-    # Replace NaNs with 0
-    processed_scaled = np.nan_to_num(processed_scaled, nan=0.0)
-    
-    return processed_scaled
+        msg = MIMEMultipart()
+        msg['From'] = SMTP_USER
+        msg['To'] = recipient
+        msg['Subject'] = f"Malware Detection Alert: {file_name}"
+        
+        body = f"""
+        <h2>Malware Detection Results</h2>
+        <p><strong>File Name:</strong> {file_name}</p>
+        <p><strong>Status:</strong> {'MALICIOUS 🚨' if result == 1 else 'BENIGN ✅'}</p>
+        <p><strong>Confidence:</strong> {confidence:.2%}</p>
+        <p><strong>Detection Time:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        """
+        msg.attach(MIMEText(body, 'html'))
+        
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+            
+        return True
+    except Exception as e:
+        st.error(f"Failed to send email: {str(e)}")
+        return False
 
 # Main application
 st.title("🛡️ Windows PE Static Malware Detection")
 st.markdown("""
-This AI-powered system detects malware in Windows Portable Executable (PE) files using static analysis features.
-Upload a CSV or Excel file containing PE file features to get predictions.
+This AI-powered system detects malware in Windows Portable Executable (PE) files using static analysis.
+Upload a Windows executable file (EXE/DLL) to analyze it for malware.
 """)
 
 # Sidebar with info
@@ -119,93 +112,111 @@ with st.sidebar:
     st.markdown("Developed by Your Name")
     st.markdown("[GitHub Repository](https://github.com/Dead0Blue/AI-Assisted-Windows-PE-Static-Malware-Analysis)")
 
-# File upload section
-uploaded_file = st.file_uploader("Upload your PE features file (CSV or Excel)", type=["csv", "xlsx"])
+# Tabs for different functionalities
+tab1, tab2, tab3 = st.tabs(["File Analysis", "Threat Dashboard", "Email Settings"])
 
-if uploaded_file is not None:
-    try:
-        # Read file
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file, engine='openpyxl')
-        
-        # Show preview
-        st.subheader("Uploaded Data Preview")
-        st.dataframe(df.head(3))
-        
-        # Preprocess and predict
-        with st.spinner('Processing and predicting...'):
-            # Preprocess
-            processed_data = preprocess_data(df)
+# Tab 1: File Analysis
+with tab1:
+    st.subheader("Analyze PE File")
+    uploaded_file = st.file_uploader("Upload a Windows executable (EXE/DLL)", type=["exe", "dll"])
+    
+    if uploaded_file is not None:
+        with st.spinner('Analyzing file...'):
+            # Calculate hashes
+            sha256 = calculate_sha256(uploaded_file)
+            md5 = calculate_md5(uploaded_file)
             
-            # Predict
-            predictions = model.predict(processed_data)
-            probabilities = model.predict_proba(processed_data)[:, 1]
+            # Look up hash in database
+            file_record = database[(database['sha256'] == sha256) | (database['md5'] == md5)]
             
-            # Create results dataframe
-            results = df.copy()
-            results['Prediction'] = predictions
-            results['Malware Probability'] = probabilities
-            results['Status'] = results['Prediction'].apply(lambda x: 'Malicious 🚨' if x == 1 else 'Benign ✅')
-            
-            # Show results
-            st.subheader("Prediction Results")
-            st.dataframe(results[['Status', 'Malware Probability']].style.format({'Malware Probability': '{:.2%}'}), height=300)
-            
-            # Download results
-            csv = results.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download Predictions as CSV",
-                data=csv,
-                file_name='malware_predictions.csv',
-                mime='text/csv'
-            )
-            
-            # Show stats
-            malware_count = results['Prediction'].sum()
-            total_count = len(results)
-            st.metric("Malicious Files Detected", f"{malware_count}/{total_count} ({malware_count/total_count:.1%})")
-            
-            # Show distribution
-            chart_data = results['Status'].value_counts().reset_index()
-            chart_data.columns = ['Status', 'Count']
-            st.bar_chart(chart_data.set_index('Status'))
-            
-    except Exception as e:
-        st.error(f"Error processing file: {str(e)}")
-        st.stop()
+            if not file_record.empty:
+                # Preprocess and predict
+                processed_data = preprocess_data(file_record)
+                prediction = model.predict(processed_data)[0]
+                probability = model.predict_proba(processed_data)[0][1]
+                
+                # Update threat stats
+                st.session_state.threat_stats['total_files'] += 1
+                if prediction == 1:
+                    st.session_state.threat_stats['malicious_count'] += 1
+                    status = "Malicious 🚨"
+                else:
+                    st.session_state.threat_stats['benign_count'] += 1
+                    status = "Benign ✅"
+                
+                # Add to recent files
+                st.session_state.threat_stats['recent_files'].insert(0, {
+                    'name': uploaded_file.name,
+                    'time': datetime.now(),
+                    'status': status,
+                    'confidence': probability
+                })
+                
+                # Keep only last 5 entries
+                st.session_state.threat_stats['recent_files'] = st.session_state.threat_stats['recent_files'][:5]
+                
+                # Display results
+                st.subheader("Analysis Results")
+                col1, col2 = st.columns(2)
+                col1.metric("Status", status)
+                col2.metric("Malware Confidence", f"{probability:.2%}")
+                
+                st.divider()
+                st.subheader("File Information")
+                st.text(f"File Name: {uploaded_file.name}")
+                st.text(f"SHA256: {sha256}")
+                st.text(f"MD5: {md5}")
+                st.text(f"Size: {len(uploaded_file.getvalue()) / 1024:.2f} KB")
+            else:
+                st.warning("File hash not found in malware database")
+                st.text(f"SHA256: {sha256}")
+                st.text(f"MD5: {md5}")
 
-else:
-    # Show sample input format
-    st.subheader("Expected Input Format")
-    st.markdown("""
-    Your input file should contain the following columns:
-    - `appeared`: Date string (e.g., "2018-11")
-    - `avclass`: AV classification (string)
-    - `histogram`, `byteentropy`, `strings`, `general`, `header`, `section`, `imports`: Feature data
-    - `exports`, `datadirectories`: Numeric values
+# Tab 2: Threat Dashboard
+with tab2:
+    st.subheader("Real-time Threat Dashboard")
     
-    Optional columns: `sha256`, `md5`
-    """)
+    # Display stats cards
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Files Analyzed", st.session_state.threat_stats['total_files'])
+    col2.metric("Malicious Files", st.session_state.threat_stats['malicious_count'])
+    col3.metric("Benign Files", st.session_state.threat_stats['benign_count'])
     
-    # Create a sample dataframe
-    sample_data = {
-        'appeared': ['2020-01', '2020-02', '2020-03'],
-        'avclass': ['Trojan', 'Adware', 'Benign'],
-        'histogram': ['hist_data_1', 'hist_data_2', 'hist_data_3'],
-        'exports': [5, 8, 3],
-        'datadirectories': [12, 15, 10]
-    }
-    sample_df = pd.DataFrame(sample_data)
+    # Threat distribution chart
+    st.subheader("Threat Distribution")
+    if st.session_state.threat_stats['total_files'] > 0:
+        fig, ax = plt.subplots()
+        ax.pie(
+            [st.session_state.threat_stats['malicious_count'], 
+             st.session_state.threat_stats['benign_count']],
+            labels=['Malicious', 'Benign'],
+            colors=['#ff4b4b', '#00cc96'],
+            autopct='%1.1f%%',
+            startangle=90
+        )
+        ax.axis('equal')
+        st.pyplot(fig)
+    else:
+        st.info("No files analyzed yet")
     
-    st.dataframe(sample_df)
+    # Recent files table
+    st.subheader("Recent Files Analyzed")
+    if st.session_state.threat_stats['recent_files']:
+        recent_df = pd.DataFrame(st.session_state.threat_stats['recent_files'])
+        st.dataframe(recent_df.style.format({'confidence': '{:.2%}'}), hide_index=True)
+    else:
+        st.info("No recent files analyzed")
+
+# Tab 3: Email Settings
+with tab3:
+    st.subheader("Email Alert Configuration")
+    email = st.text_input("Enter your email for threat alerts")
+    enable_alerts = st.checkbox("Enable email alerts for malicious files")
     
-    # Download sample template
-    csv = sample_df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="Download Sample Template",
-        data=csv,
-        file_name='malware_template.csv',
-        mime='text/csv'
-    )
+    if st.button("Save Configuration"):
+        st.session_state.email = email
+        st.session_state.enable_alerts = enable_alerts
+        st.success("Configuration saved!")
+    
+    if 'enable_alerts' in st.session_state and st.session_state.enable_alerts:
+        st.info(f"Alerts enabled for: {st.session_state.email}")
