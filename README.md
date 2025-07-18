@@ -2,7 +2,8 @@
 
 Une application Tkinter en Python pour analyser des fichiers PE (EXE/DLL) et détecter s’ils sont malveillants ou bénins à l’aide d’un modèle de régression logistique entraîné sur le dataset EMBER 2018.
 
-![Interface du Détecteur de Malware](interface.png)
+
+<img width="860" height="604" alt="image" src="https://github.com/user-attachments/assets/8e0c49dd-41bd-43b6-9a8a-dd97d3865243" />
 
 ---
 
