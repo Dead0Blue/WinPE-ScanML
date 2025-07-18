@@ -59,7 +59,15 @@ Pour ré-entraîner le modèle avec le dataset EMBER 2018 :
    tar -xvf ember_dataset_2018_2.tar.bz2
    ```
 
-   ⚠️ **Note :** Le dataset EMBER initial est très volumineux. Pour éviter un biais lors de l'entraînement, nous avons réduit sa taille à 4977 lignes, en équilibrant à parts égales les échantillons malveillants (label 1) et bénins (label 0).
+   ⚠️ **Note :** Le dataset EMBER initial était très volumineux, corrompu au format JSON et difficile à manipuler. Pour éviter un biais lors de l'entraînement, nous avons :
+
+Corrigé et nettoyé les fichiers JSON corrompus.
+
+Converti le fichier JSON en Excel pour faciliter la manipulation et la vérification des données.
+
+Réduit la taille du dataset à 4977 lignes, en équilibrant à parts égales les échantillons malveillants (label 1) et bénins (label 0).
+
+
 
 2. **Exécuter le script d'entraînement**
 
