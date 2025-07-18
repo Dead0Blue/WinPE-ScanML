@@ -124,8 +124,4 @@ projet/
 * **Modèle :** Remplacer les fichiers `.pkl` par votre propre modèle
 * **Seuil de détection :** Ajuster `SEUIL_MALVEILLANT` dans le code
 
----
 
-## 📜 Licence
-
-MIT © Votre Nom
