@@ -114,13 +114,12 @@ L’interface propose :
 ```text
 projet/
 │
-├── malware_detector.py       # Script principal
-├── train_model.py            # Script d'entraînement
+├── malware_detector.py      
+├── train_model.py            
 ├── modele_regression_logistique.pkl
 ├── scaler.pkl
 ├── features_columns.pkl
-├── requirements.txt          # Dépendances
-├── interface.png             # Capture d'écran
+├── requirements.txt          
 └── README.md
 ```
 
