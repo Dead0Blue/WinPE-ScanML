@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+model_artifacts/
+scan_history.json
+settings.json
+.vscode/
+.idea/
+*.log
